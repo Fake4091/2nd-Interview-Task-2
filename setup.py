@@ -15,7 +15,9 @@ cursor.execute(
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL
+        password TEXT NOT NULL,
+        failed_attempts INTEGER DEFAULT 0,
+        last_failed_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 """
 )

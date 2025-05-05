@@ -2,6 +2,7 @@ from aiohttp import web
 from cryptography import fernet
 from aiohttp_session import setup, new_session, get_session
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
+from datetime import datetime, timedelta
 import base64
 import sqlite3
 
@@ -69,22 +70,40 @@ class Login(web.View):
         username = data["username"]
         password = data["password"]
 
-        conn = sqlite3.connect("task_2.db")
+        conn = sqlite3.connect("task_2.db", detect_types=sqlite3.PARSE_DECLTYPES)
         c = conn.cursor()
-        c.execute(
-            "SELECT * FROM users WHERE username=? AND password=?", (username, password)
-        )
+        c.execute("SELECT * FROM users WHERE username=?", (username,))
         user = c.fetchone()
 
         if not user:
+            conn.close()
+            return web.json_response({"message": "User Not Found"}, status=404)
+        elif (user[3] > 2) & (datetime.now() - user[4] <= timedelta(minutes=5)):
+            conn.close()
             return web.json_response(
-                {"message": "Invalid username or password"}, status=401
+                {"message": "Too many login attempts. Try again later"}, status=400
             )
+        elif user[2] != password:
+            if datetime.now() - user[4] > timedelta(minutes=5):
+                c.execute(
+                    "UPDATE users SET failed_attempts = 1 WHERE id = ?", (user[0],)
+                )
+                conn.commit()
+            c.execute(
+                "UPDATE users SET failed_attempts = failed_attempts + 1, last_failed_attempt = ? WHERE id = ?",
+                (datetime.now(), user[0]),
+            )
+            conn.commit()
+            conn.close()
+            return web.json_response({"message": "Incorrect Password"}, status=400)
         elif get_session_by_user(user[0]):
+            conn.close()
             return web.json_response(
                 {"message": "Already logged in with another session"}, status=400
             )
         else:
+            c.execute("UPDATE users SET failed_attempts = 0 WHERE id = ?", (user[0],))
+            conn.commit()
             session = await new_session(self.request)
             session["user_id"] = user[0]
 
